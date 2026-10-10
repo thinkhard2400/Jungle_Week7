@@ -315,7 +315,9 @@ thread_yield (void) {
 	// 	list_push_back (&ready_list, &curr->elem);
 
 	 // 현재 스레드를 READY 리스트에 우선순위 정렬로 추가
-	if (curr != idle_thread) list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
+	if (curr != idle_thread) {
+		list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
