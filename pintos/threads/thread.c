@@ -323,7 +323,26 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+    enum intr_level old_level = intr_disable ();
+    struct thread *curr = thread_current ();
+    bool should_yield = false;
+
+    /* 현재 스레드의 우선순위 변경. */
+    curr->priority = new_priority;
+
+    /* 준비 큐가 비어 있지 않으면 가장 앞의 스레드와 비교. */
+    if (!list_empty (&ready_list)) {
+        struct thread *front =
+            list_entry (list_front (&ready_list), struct thread, elem);
+
+        should_yield = front->priority > curr->priority;
+    }
+
+    intr_set_level (old_level);
+
+    /* 더 높은 우선순위의 스레드가 있으면 CPU 양보. */
+    if (should_yield)
+        thread_yield ();	
 }
 
 /* Returns the current thread's priority. */
