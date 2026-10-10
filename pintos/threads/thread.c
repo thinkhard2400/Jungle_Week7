@@ -63,6 +63,9 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+// 우선순위 비교함수
+bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -207,6 +210,9 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	// 우선순위 양보
+    if (t->priority > thread_current()->priority) thread_yield();
+
 	return tid;
 }
 
@@ -240,7 +246,10 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+    // 정렬 순서대로 삽입
+    list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
+
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -302,8 +311,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	// if (curr != idle_thread)
+	// 	list_push_back (&ready_list, &curr->elem);
+
+	 // 현재 스레드를 READY 리스트에 우선순위 정렬로 추가
+	if (curr != idle_thread) list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -587,4 +599,16 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+	(void) aux;	// 아직 아무것도 안함. 비교할 때 참고할 추가정보
+
+	// list_elem으로 스레드 구조체 주소 찾기
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+
+	// 내림차순
+	return thread_a->priority > thread_b->priority;
 }
