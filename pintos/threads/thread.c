@@ -657,6 +657,8 @@ bool priority_compare(const struct list_elem *a, const struct list_elem *b, void
 void thread_move_sleep(int64_t ticks)
 {
 	enum intr_level old_level = intr_disable();
+	/* 기상 시각과 대기 목록 연결 정보를 저장할 현재 스레드의
+	주소를 가져온다. */
 	struct thread *cur_thread = thread_current();
 	// 일어날 시각 저장
 	cur_thread->wake_up_tick = ticks;
@@ -676,13 +678,23 @@ void thread_wakeup(int64_t ticks)
 	struct thread *cur_t = list_entry(cur_e, struct thread, elem);
 
 	// sleep list가 비어있지 않거나 틱이 일어날 시간을 지난 경우
+	/* shortcut: 매 틱 전체 대기 목록을 검사하며, 대기 스레드가
+	많아지면 기상 시각 순으로 정렬하는 방식으로 변경한다. */
 	while(ticks >= cur_t->wake_up_tick )
 	{
 		struct list_elem *next_e = list_next(cur_e);
+		/* 하나의 elem이 sleep_list와 ready_list에 동시에
+		들어가지 않도록 sleep_list에서 먼저 제거한다.
+		list_remove()가 반환한 다음 항목부터 순회를 계속한다. */
 		list_remove(cur_e);
+		/* 기상 시각이 된 스레드를 BLOCKED에서 READY 상태로
+		변경하여 다시 스케줄링 대상에 포함한다.
+		즉시 RUNNING이 되는 것은 아니며, 스케줄러가 선택해야
+		실제 실행을 재개한다. */
 		thread_unblock(cur_t);
 		cur_e = next_e;
 
+		/* 현재 목록 항목을 포함하고 있는 실제 스레드를 찾는다. */
 		if (!list_empty(&sleep_list)) cur_t = list_entry(cur_e, struct thread, elem);
 		else break;
 	}
