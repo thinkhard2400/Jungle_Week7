@@ -210,8 +210,9 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
-	// 우선순위 양보
-    if (t->priority > thread_current()->priority) thread_yield();
+	// 우선순위 양보(by 종민) =====================================================
+	if (t->priority > thread_current()->priority) thread_yield();			
+	// ==========================================================================
 
 	return tid;
 }
@@ -246,9 +247,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
-    // 정렬 순서대로 삽입
-    list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
+	
+	// 현재 스레드를 READY 리스트에 우선순위 정렬 순서대로 삽입 (by 종민) =====================
+	// list_push_back (&ready_list, &t->elem); 원본
+	list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
+	// =================================================================================
 
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
@@ -311,13 +314,13 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	// if (curr != idle_thread)
-	// 	list_push_back (&ready_list, &curr->elem);
 
-	 // 현재 스레드를 READY 리스트에 우선순위 정렬로 추가
+	// 현재 스레드를 READY 리스트에 우선순위 정렬로 추가 (by 종민) ============================
 	if (curr != idle_thread) {
+		// list_push_back (&ready_list, &curr->elem); 원본에서는 ready_list의 맨 뒤에 push
 		list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
 	}
+	// =================================================================================
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -442,6 +445,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	// priority-donate를 위한 멤버 변수 초기화 (by 종민) ============================
+	t->init_priority = priority;	
+	list_init(&t->have_lock_list);				
+	// ==========================================================================
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -622,6 +630,7 @@ allocate_tid (void) {
 	return tid;
 }
 
+// list_insert_ordered의 비교 함수 (by 종민) =========================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 	(void) aux;	// 아직 아무것도 안함. 비교할 때 참고할 추가정보
@@ -633,3 +642,4 @@ bool priority_compare(const struct list_elem *a, const struct list_elem *b, void
 	// 내림차순
 	return thread_a->priority > thread_b->priority;
 }
+// ===========================================================================

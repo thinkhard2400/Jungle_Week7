@@ -92,6 +92,11 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	// priority-donate를 위한 멤버 변수들 (by 종민) ================================
+	int init_priority;					// 초기 우선순위 (불변)
+	struct list have_lock_list;			// 소유한 lock list
+	// ==========================================================================
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -143,7 +148,8 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
-// list compare
+// list compare를 위한 함수 (by 종민) =========================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+// ===========================================================================
 
 #endif /* threads/thread.h */
