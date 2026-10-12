@@ -92,9 +92,22 @@ void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
+	// 스레드가 일어나야 할 시간(by 종민) =============================
+	int64_t wake_up_tick = start + ticks;
+	// ============================================================
+
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+
+	// 현재 틱이 wake_up_tick보다 빠르다면 BLOCKED (by 종민) ==========
+	enum intr_level old_level = intr_disable();
+	if (start < wake_up_tick)
+	{
+		thread_move_sleep(wake_up_tick);
+		thread_block();
+	}
+
+	intr_set_level(old_level);
+	// ============================================================
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,6 +138,12 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+
+	// thread 깨우기 (by 종민) ===========================================
+	thread_wakeup(ticks);
+	// ==================================================================
+
+	// thread_tick()이 끝나고 yield()
 	thread_tick ();
 }
 

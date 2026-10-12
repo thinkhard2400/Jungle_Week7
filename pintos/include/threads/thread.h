@@ -95,6 +95,9 @@ struct thread {
 	// priority-donate를 위한 멤버 변수들 (by 종민) ================================
 	int init_priority;					// 초기 우선순위 (불변)
 	struct list have_lock_list;			// 소유한 lock list
+
+	// alarm을 위한 멤버 변수
+	int64_t wake_up_tick;				// 일어날 시간
 	// ==========================================================================
 
 	/* Shared between thread.c and synch.c. */
@@ -150,6 +153,11 @@ void do_iret (struct intr_frame *tf);
 
 // list compare를 위한 함수 (by 종민) =========================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+
+// alarm wait를 위한 함수
+void thread_move_sleep(int64_t tick);	// thread를 sleep list에 넣는 함수
+void thread_wakeup(int64_t ticks);	// BLCOKED된 스레드를 시간에 맞춰 ready_list로 보내는 함수
 // ===========================================================================
 
 #endif /* threads/thread.h */

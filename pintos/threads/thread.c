@@ -28,6 +28,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+// alarm-wait (by 종민) ===============================================
+static struct list sleep_list;	// BLCOKED되어 자고 있는 스레드 리스트
+// ====================================================================
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -112,6 +116,10 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+
+	// sleep list 초기화 (by 종민) ==================================
+	list_init(&sleep_list);
+	// ============================================================
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -630,7 +638,7 @@ allocate_tid (void) {
 	return tid;
 }
 
-// list_insert_ordered의 비교 함수 (by 종민) =========================================
+// 우선순위 정렬 비교 함수 (by 종민) ==================================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 	(void) aux;	// 아직 아무것도 안함. 비교할 때 참고할 추가정보
@@ -642,4 +650,55 @@ bool priority_compare(const struct list_elem *a, const struct list_elem *b, void
 	// 내림차순
 	return thread_a->priority > thread_b->priority;
 }
-// ===========================================================================
+
+// alarm wait를 위한 함수
+// thread를 sleep list에 넣는 함수
+void thread_move_sleep(int64_t ticks)
+{
+	enum intr_level old_level = intr_disable();
+	struct thread *cur_thread = thread_current();
+	// 일어날 시각 저장
+	cur_thread->wake_up_tick = ticks;
+	// sleep list에 빠른순 저장
+	list_insert_ordered(&sleep_list, &cur_thread->elem, wake_up_tick_compare, NULL);
+
+	intr_set_level(old_level);
+}
+
+// BLCOKED된 스레드를 시간에 맞춰 ready_list로 보내는 함수
+void thread_wakeup(int64_t ticks)
+{
+	if (list_empty(&sleep_list)) return;
+
+	enum intr_level old_level = intr_disable();
+	struct list_elem *cur_e = list_begin(&sleep_list);
+	struct thread *cur_t = list_entry(cur_e, struct thread, elem);
+
+	// sleep list가 비어있지 않거나 틱이 일어날 시간을 지난 경우
+	while(ticks >= cur_t->wake_up_tick )
+	{
+		struct list_elem *next_e = list_next(cur_e);
+		list_remove(cur_e);
+		thread_unblock(cur_t);
+		cur_e = next_e;
+
+		if (!list_empty(&sleep_list)) cur_t = list_entry(cur_e, struct thread, elem);
+		else break;
+	}
+
+	intr_set_level(old_level);
+}	
+
+// wake_up_tick 정렬 비교 함수 
+bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+	(void) aux;
+
+	// list_elem으로 스레드 구조체 주소 찾기
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+
+	// 오름차순
+	return thread_a->wake_up_tick < thread_b->wake_up_tick;
+}
+// =================================================================================
