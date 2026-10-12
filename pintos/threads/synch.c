@@ -191,8 +191,25 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	// priority-donate (by 종민) ==================================
+	// 인터럽트 중단
+	enum intr_level old_level;
+	old_level = intr_disable();
+
+	// 얻고자 하는 lock의 소유자가 있는경우 donate
+	if (lock->holder) thread_donate(lock->holder);
+	// ============================================================
+
+	sema_down(&lock->semaphore);
+	lock->holder = thread_current();
+
+	// priority-donate (by 종민) ===================================
+	// lock 소유자의 have_lock_list에 lock 삽입
+	list_push_back(&thread_current()->have_lock_list, &lock->lock_elem);
+
+	// 인터럽트 복원
+	intr_set_level(old_level);
+	// ============================================================
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -225,8 +242,28 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	// priority-donate (by 종민) ==================================
+	// 인터럽트 중단
+	enum intr_level old_level;
+	old_level = intr_disable();
+	// ============================================================
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+
+	// priority-donate (by 종민) ===================================
+	// lock 소유자의 have_lock_list에서 lock 제거
+	ASSERT (&lock->lock_elem != NULL);
+	list_remove(&lock->lock_elem);
+
+	// 기부받은 우선순위 복원
+	thread_donate_recovery();
+
+	// 선점
+	thread_yield();
+	// 인터럽트 복원
+	intr_set_level(old_level);
+	// ============================================================
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -324,3 +361,43 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
 }
+
+// priority-donate (by 종민) ==================================
+/*
+* @brief 현재 thread보다 낮은 priority를 가지고 있는 thread 에게 donate
+*
+* @param holder lock을 가지고 있는 thread
+*/
+void thread_donate(struct thread *holder)
+{
+	enum intr_level old_level;
+	old_level = intr_disable();
+
+	if (holder->priority < thread_get_priority())
+	{
+		holder->priority = thread_get_priority();
+	}
+
+	intr_set_level(old_level);
+}
+
+/*
+* @brief lock_release에서 우선순위 복원
+*
+* @param holder lock을 가지고 있는 thread
+*/
+void thread_donate_recovery()
+{
+	enum intr_level old_level;
+	old_level = intr_disable();
+
+	struct thread *cur_thread = thread_current();
+
+	if (list_empty(&cur_thread->have_lock_list))
+	{
+		cur_thread->priority = cur_thread->init_priority;
+	}
+
+	intr_set_level(old_level);
+}
+// ============================================================

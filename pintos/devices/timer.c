@@ -109,37 +109,34 @@ timer_sleep (int64_t ticks) {
 	// ? 맨 처음 코딩한 아래 계산식 자체는 맞지만 wake_tick을 지역변수에만 저장하면
 	// 	 timer_interrupt()가 sleep_list에서 꺼낸 각 스레드의 기상 시각을
 	//   확인할 수 없다. 따라서 struct thread의 wake_tick에 저장한다.
-	// int64_t start = timer_ticks ();
+	int64_t start = timer_ticks ();
 	// 스레드가 깨어날 시간(현재 틱 + 기다릴 틱)을 wake_tick에 저장한다.
 	// int64_t wake_tick = start + ticks;
 
+	// 스레드가 일어나야 할 시간(by 종민) =============================
+	int64_t wake_up_tick = start + ticks;
+	// ============================================================
+
 	ASSERT (intr_get_level () == INTR_ON);
 
-	/* 0 이하의 대기 시간은 스레드를 재우지 않고 즉시 반환한다. */
-	if (ticks <= 0) {
-		return;
-	}
+	// 현재 틱이 wake_up_tick보다 빠르다면 BLOCKED (by 종민) ==========
 	/* 대기 목록 등록과 스레드 차단 사이에 타이머 인터럽트가
-	   실행되는 경쟁 상태를 막기 위해 인터럽트를 끈다.
-	   반환값에는 나중에 복원할 기존 인터럽트 상태가 저장된다. */
-	enum intr_level old_level = intr_disable ();
-
-	/* 기상 시각과 대기 목록 연결 정보를 저장할 현재 스레드의
-	   주소를 가져온다. */
-	struct thread *current = thread_current ();
-
-	/* 현재 시각에 요청받은 대기 시간을 더해 기상 시각을 기록하고,
-	   타이머 인터럽트가 찾을 수 있도록 대기 목록에 등록한다. */
-	current->wake_tick = timer_ticks () + ticks;
-	list_push_back (&sleep_list, &current->elem);
-
-	/* 타이머 인터럽트가 기상 시각에 이 스레드를 깨울 때까지
-	   준비 큐에서 제외한다. */
-	thread_block ();
-
+	실행되는 경쟁 상태를 막기 위해 인터럽트를 끈다.
+	반환값에는 나중에 복원할 기존 인터럽트 상태가 저장된다. */
+	enum intr_level old_level = intr_disable();
+	if (start < wake_up_tick)
+	{
+		/* 현재 시각에 요청받은 대기 시간을 더해 기상 시각을 기록하고,
+	   	타이머 인터럽트가 찾을 수 있도록 대기 목록에 등록한다. */
+		thread_move_sleep(wake_up_tick);
+		/* 타이머 인터럽트가 기상 시각에 이 스레드를 깨울 때까지
+	   	준비 큐에서 제외한다. */
+		thread_block();
+	}
 	/* 스레드가 다시 실행되면 timer_sleep() 호출 전의
-	   인터럽트 상태로 복원한다. */
-	intr_set_level (old_level);
+	인터럽트 상태로 복원한다. */
+	intr_set_level(old_level);
+	// ============================================================
 }
 //! === END === //
 
@@ -189,31 +186,11 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	/* 타이머 인터럽트가 발생했으므로 현재 시간을 1틱 증가시킨다. */
 	ticks++;
 
-	/* shortcut: 매 틱 전체 대기 목록을 검사하며, 대기 스레드가
-	   많아지면 기상 시각 순으로 정렬하는 방식으로 변경한다. */
-	elem = list_begin (&sleep_list);
-	while (elem != list_end (&sleep_list)) {
-		/* 현재 목록 항목을 포함하고 있는 실제 스레드를 찾는다. */
-		sleeping = list_entry (elem, struct thread, elem);
+	// thread 깨우기 (by 종민) ===========================================
+	thread_wakeup(ticks);
+	// ==================================================================
 
-		if (sleeping->wake_tick <= ticks) {
-			/* 하나의 elem이 sleep_list와 ready_list에 동시에
-			   들어가지 않도록 sleep_list에서 먼저 제거한다.
-			   list_remove()가 반환한 다음 항목부터 순회를 계속한다. */
-			elem = list_remove (elem);
-
-			/* 기상 시각이 된 스레드를 BLOCKED에서 READY 상태로
-			   변경하여 다시 스케줄링 대상에 포함한다.
-			   즉시 RUNNING이 되는 것은 아니며, 스케줄러가 선택해야
-			   실제 실행을 재개한다. */
-			thread_unblock (sleeping);
-		} else {
-			/* 아직 기상 시각이 아니라면 다음 항목을 검사한다. */
-			elem = list_next (elem);
-		}
-	}
-
-	/* 현재 실행 중인 스레드의 CPU 사용 시간과 선점 여부를 처리한다. */
+	// thread_tick()이 끝나고 yield()
 	thread_tick ();
 }
 //! === END === //

@@ -28,6 +28,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+// alarm-wait (by 종민) ===============================================
+static struct list sleep_list;	// BLCOKED되어 자고 있는 스레드 리스트
+// ====================================================================
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -112,6 +116,10 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+
+	// sleep list 초기화 (by 종민) ==================================
+	list_init(&sleep_list);
+	// ============================================================
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -210,8 +218,9 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
-	// 우선순위 양보
-    if (t->priority > thread_current()->priority) thread_yield();
+	// 우선순위 양보(by 종민) =====================================================
+	if (t->priority > thread_current()->priority) thread_yield();			
+	// ==========================================================================
 
 	return tid;
 }
@@ -246,9 +255,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
-    // 정렬 순서대로 삽입
-    list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
+	
+	// 현재 스레드를 READY 리스트에 우선순위 정렬 순서대로 삽입 (by 종민) =====================
+	// list_push_back (&ready_list, &t->elem); 원본
+	list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
+	// =================================================================================
 
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
@@ -311,13 +322,13 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	// if (curr != idle_thread)
-	// 	list_push_back (&ready_list, &curr->elem);
 
-	 // 현재 스레드를 READY 리스트에 우선순위 정렬로 추가
+	// 현재 스레드를 READY 리스트에 우선순위 정렬로 추가 (by 종민) ============================
 	if (curr != idle_thread) {
+		// list_push_back (&ready_list, &curr->elem); 원본에서는 ready_list의 맨 뒤에 push
 		list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
 	}
+	// =================================================================================
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -331,6 +342,7 @@ thread_set_priority (int new_priority) {
 
     /* 현재 스레드의 우선순위 변경. */
     curr->priority = new_priority;
+	curr->init_priority = new_priority;
 
     /* 준비 큐가 비어 있지 않으면 가장 앞의 스레드와 비교. */
     if (!list_empty (&ready_list)) {
@@ -442,6 +454,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	// priority-donate를 위한 멤버 변수 초기화 (by 종민) ============================
+	t->init_priority = priority;	
+	list_init(&t->have_lock_list);				
+	// ==========================================================================
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -622,6 +639,7 @@ allocate_tid (void) {
 	return tid;
 }
 
+// 우선순위 정렬 비교 함수 (by 종민) ==================================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 	(void) aux;	// 아직 아무것도 안함. 비교할 때 참고할 추가정보
@@ -633,3 +651,55 @@ bool priority_compare(const struct list_elem *a, const struct list_elem *b, void
 	// 내림차순
 	return thread_a->priority > thread_b->priority;
 }
+
+// alarm wait를 위한 함수
+// thread를 sleep list에 넣는 함수
+void thread_move_sleep(int64_t ticks)
+{
+	enum intr_level old_level = intr_disable();
+	struct thread *cur_thread = thread_current();
+	// 일어날 시각 저장
+	cur_thread->wake_up_tick = ticks;
+	// sleep list에 빠른순 저장
+	list_insert_ordered(&sleep_list, &cur_thread->elem, wake_up_tick_compare, NULL);
+
+	intr_set_level(old_level);
+}
+
+// BLCOKED된 스레드를 시간에 맞춰 ready_list로 보내는 함수
+void thread_wakeup(int64_t ticks)
+{
+	if (list_empty(&sleep_list)) return;
+
+	enum intr_level old_level = intr_disable();
+	struct list_elem *cur_e = list_begin(&sleep_list);
+	struct thread *cur_t = list_entry(cur_e, struct thread, elem);
+
+	// sleep list가 비어있지 않거나 틱이 일어날 시간을 지난 경우
+	while(ticks >= cur_t->wake_up_tick )
+	{
+		struct list_elem *next_e = list_next(cur_e);
+		list_remove(cur_e);
+		thread_unblock(cur_t);
+		cur_e = next_e;
+
+		if (!list_empty(&sleep_list)) cur_t = list_entry(cur_e, struct thread, elem);
+		else break;
+	}
+
+	intr_set_level(old_level);
+}	
+
+// wake_up_tick 정렬 비교 함수 
+bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+	(void) aux;
+
+	// list_elem으로 스레드 구조체 주소 찾기
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+
+	// 오름차순
+	return thread_a->wake_up_tick < thread_b->wake_up_tick;
+}
+// =================================================================================
