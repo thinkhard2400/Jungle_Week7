@@ -93,6 +93,14 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
+
+	// ! === 정승영 추가 코드 시작 부분 === //
+	/* 0 이하의 대기 시간은 스레드를 재우지 않고 즉시 반환한다. */
+	if (ticks <= 0) {
+		return;
+	}
+	// ! === 정승영 추가 코드 종료 부분 === //
+
 	while (timer_elapsed (start) < ticks)
 		thread_yield ();
 }
