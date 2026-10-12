@@ -95,6 +95,15 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	//! === 정승영 추가 코드 시작 부분 === //
+	/* timer_sleep()으로 차단된 스레드가 다시 깨어나야 할 타이머 틱을 저장한다.
+	맨 끝 magic 밑이 아닌 여기에 넣은 이유는 magic은
+	커널 스택 오버플로를 감지하기 위한 경계값이다.
+    따라서 스택이 struct thread 영역을 침범할 때 가장 먼저 손상되도록
+    반드시 구조체의 마지막 필드로 유지해야 한다. */
+	int64_t wake_tick;
+	//! === 정승영 추가 코드 종료 부분 === //
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
