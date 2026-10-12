@@ -43,5 +43,3 @@ priority_sema_thread (void *aux UNUSED)
   sema_down (&sema);
   msg ("Thread %s woke up.", thread_name ());
 }
-
-//for commit 
