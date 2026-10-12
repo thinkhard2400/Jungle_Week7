@@ -342,6 +342,7 @@ thread_set_priority (int new_priority) {
 
     /* 현재 스레드의 우선순위 변경. */
     curr->priority = new_priority;
+	curr->init_priority = new_priority;
 
     /* 준비 큐가 비어 있지 않으면 가장 앞의 스레드와 비교. */
     if (!list_empty (&ready_list)) {
