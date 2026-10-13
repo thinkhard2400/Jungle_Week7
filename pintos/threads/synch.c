@@ -203,6 +203,7 @@ lock_acquire (struct lock *lock) {
 	// ============================================================
 
 	sema_down(&lock->semaphore);
+
 	lock->holder = thread_current();
 
 	// priority-donate (by 종민) ===================================
@@ -251,18 +252,19 @@ lock_release (struct lock *lock) {
 	// ============================================================
 
 	lock->holder = NULL;
-	sema_up (&lock->semaphore);
+	
 
 	// priority-donate (by 종민) ===================================
-	// lock 소유자의 have_lock_list에서 lock 제거
 	ASSERT (&lock->lock_elem != NULL);
+	// lock 소유자의 have_lock_list에서 lock 제거
 	list_remove(&lock->lock_elem);
 
 	// 기부받은 우선순위 복원
 	thread_donate_recovery();
-
+	
+	sema_up (&lock->semaphore);
 	// 선점
-	thread_yield();
+
 	// 인터럽트 복원
 	intr_set_level(old_level);
 	// ============================================================
@@ -399,10 +401,38 @@ void thread_donate_recovery(void)
 	old_level = intr_disable();
 
 	struct thread *cur_thread = thread_current();
+	struct list *lock_list = &cur_thread->have_lock_list;
 
-	if (list_empty(&cur_thread->have_lock_list))
-	{
+	if (list_empty(lock_list))
+	{// 모든 소유 락을 해제하면 초기 우선순위로 복원
 		cur_thread->priority = cur_thread->init_priority;
+	}
+	else
+	{// 남아있는 lock이 있다면 lock들 중 가장 큰 우선순위 기부로 변경
+		int max_priority = cur_thread->init_priority;
+		struct list_elem *lock_e = list_front(lock_list);
+
+		while(lock_e != list_end(lock_list))
+		{
+			struct lock *cur_lock = list_entry(lock_e, struct lock, lock_elem);
+			struct list *donator_list = &cur_lock->semaphore.waiters;
+			// 기다리는 도중 다른 스레드가 기부했을 수 있어 정렬을 해준다.
+			list_sort(donator_list, priority_compare, NULL);
+			struct thread *t;
+			if(!list_empty(donator_list)) 
+			{
+				t = list_entry(list_front(donator_list), struct thread, elem);
+				if (max_priority < t->priority) max_priority = t->priority;
+				lock_e = list_next(lock_e);
+				continue;
+			}
+
+			// if (max_priority < t->priority) max_priority = t->priority;
+			lock_e = list_next(lock_e);
+		}
+
+		// thread_set_priority를 안해주는 이유는 이 함수에서 init_priority도 변경하기 때문이다.
+		cur_thread->priority = max_priority;
 	}
 
 	intr_set_level(old_level);
