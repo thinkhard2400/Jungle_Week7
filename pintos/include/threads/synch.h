@@ -44,7 +44,10 @@ void cond_broadcast (struct condition *, struct lock *);
 
 // priority-donate를 위한 함수 (by 종민) =======================================
 void thread_donate(struct thread *holder);
-void thread_donate_recovery();
+void thread_donate_recovery(void);
+
+// priority-condvar
+bool condvar_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
 // ===========================================================================
 
 /* Optimization barrier.

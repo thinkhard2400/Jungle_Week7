@@ -324,7 +324,12 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+
+	// priority-condvar (by 종민) ===============================================
+	//list_push_back (&cond->waiters, &waiter.elem);	// 원본
+	// 우선순위 순으로 대기자 정렬
+	list_insert_ordered(&cond->waiters, &waiter.elem, condvar_compare, NULL);
+	// ========================================================================
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -388,7 +393,7 @@ void thread_donate(struct thread *holder)
 *
 * @param holder lock을 가지고 있는 thread
 */
-void thread_donate_recovery()
+void thread_donate_recovery(void)
 {
 	enum intr_level old_level;
 	old_level = intr_disable();
@@ -401,5 +406,23 @@ void thread_donate_recovery()
 	}
 
 	intr_set_level(old_level);
+}
+
+bool condvar_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+	(void) *a; //  a는 sema->waiters에 넣기 전이라 사용하지 않는다.
+	(void) aux;
+
+	// semaphore 주소 찾기
+	const struct semaphore *sema_b = &list_entry(b, struct semaphore_elem, elem)->semaphore;
+
+	if (list_empty(&sema_b->waiters)) return false;
+	// list_elem으로 스레드 구조체 주소 찾기
+	// 어차피 비교하는건 현재 스레드의 우선순위다.
+	const struct thread *thread_a = thread_current();	
+	const struct thread *thread_b = list_entry(list_front(&sema_b->waiters), struct thread, elem);
+
+	// 내림차순
+	return thread_a->priority > thread_b->priority;
 }
 // ============================================================

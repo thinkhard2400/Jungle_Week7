@@ -717,7 +717,7 @@ bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, 
 
 // priority-sema
 // running thread와 우선순위가 가장 높은 스레드를 비교해 선점하도록 함
-void thread_preemption()
+void thread_preemption(void)
 {
 	if (list_empty(&ready_list)) return;
 
