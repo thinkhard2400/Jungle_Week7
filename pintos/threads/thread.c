@@ -219,7 +219,7 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 
 	// 우선순위 양보(by 종민) =====================================================
-	if (t->priority > thread_current()->priority) thread_yield();			
+	thread_preemption();
 	// ==========================================================================
 
 	return tid;
@@ -713,5 +713,19 @@ bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, 
 
 	// 오름차순
 	return thread_a->wake_up_tick < thread_b->wake_up_tick;
+}
+
+// priority-sema
+// running thread와 우선순위가 가장 높은 스레드를 비교해 선점하도록 함
+void thread_preemption(void)
+{
+	if (list_empty(&ready_list)) return;
+
+	const struct list_elem *e = list_front(&ready_list);
+	const struct thread *highest_pr_t = list_entry(e, struct thread, elem);
+	if (highest_pr_t->priority > thread_current()->priority) 
+	{
+		thread_yield();
+	}
 }
 // =================================================================================

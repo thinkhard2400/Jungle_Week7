@@ -164,6 +164,9 @@ bool wake_up_tick_compare(const struct list_elem *a, const struct list_elem *b, 
 // alarm wait를 위한 함수
 void thread_move_sleep(int64_t tick);	// thread를 sleep list에 넣는 함수
 void thread_wakeup(int64_t ticks);	// BLCOKED된 스레드를 시간에 맞춰 ready_list로 보내는 함수
+
+// priority-sema를 위한 함수
+void thread_preemption(void); // runing보다 ready 맨앞이 더 크면 양보
 // ===========================================================================
 
 #endif /* threads/thread.h */
