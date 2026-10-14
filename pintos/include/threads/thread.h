@@ -95,6 +95,7 @@ struct thread {
 	// priority-donate를 위한 멤버 변수들 (by 종민) ================================
 	int init_priority;					// 초기 우선순위 (불변)
 	struct list have_lock_list;			// 소유한 lock list
+	struct thread *lock_holder_thread;	// 이 스레드가 기부한 스레드
 
 	// alarm을 위한 멤버 변수
 	/* timer_sleep()으로 차단된 스레드가 다시 깨어나야 할 타이머 틱을 저장한다.

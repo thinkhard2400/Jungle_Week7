@@ -353,6 +353,12 @@ thread_set_priority (int new_priority) {
 	// 추가↓↓↓↓↓↓↓↓↓================================================================
 	curr->init_priority = new_priority;
 
+	if (!list_empty(&curr->have_lock_list))
+	{
+		// 남아있는 lock이 있다면 lock들 중 가장 큰 우선순위 기부로 변경
+		thread_have_lock_waiters_donate(curr, &curr->have_lock_list);
+	}
+
     /* 준비 큐가 비어 있지 않으면 가장 앞의 스레드와 비교. */
     if (!list_empty (&ready_list)) {
         struct thread *front =
@@ -467,7 +473,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	// priority-donate를 위한 멤버 변수 초기화 (by 종민) ============================
 	t->init_priority = priority;	
-	list_init(&t->have_lock_list);				
+	list_init(&t->have_lock_list);
+	t->lock_holder_thread = NULL;				
 	// ==========================================================================
 }
 

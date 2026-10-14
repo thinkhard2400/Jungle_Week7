@@ -118,8 +118,13 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+	{
+		// 대기자 기부로 인한 정렬 복구 (by 종민) ↓↓↓↓↓↓↓↓↓↓↓↓↓↓================
+		list_sort(&sema->waiters, priority_compare, NULL);
+		// 추가 ============================================================
+		thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
+	}
+
 	sema->value++;
 
 	// 스레드 선점 (by 종민) ↓↓↓↓↓↓↓↓↓↓↓↓↓↓==========================
@@ -256,15 +261,24 @@ lock_release (struct lock *lock) {
 	// 인터럽트 중단
 	enum intr_level old_level;
 	old_level = intr_disable();
-	// ============================================================
+	// ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑============================================
 
 	lock->holder = NULL;
 	
-
-	// priority-donate (by 종민) ===================================
+	// priority-donate (by 종민) ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓======================
 	ASSERT (&lock->lock_elem != NULL);
 	// lock 소유자의 have_lock_list에서 lock 제거
 	list_remove(&lock->lock_elem);
+	// waiters의 대기자들은 lock이 해제되었으므로 lock_holder_thread를 모두 NULL로 만들어준다.
+	if (!list_empty (&lock->semaphore.waiters))
+	{
+		struct list_elem *e = list_front(&lock->semaphore.waiters);
+		while (e != list_end(&lock->semaphore.waiters))
+		{
+			list_entry(e, struct thread, elem)->lock_holder_thread = NULL;
+			e = list_next(e);
+		}
+	}
 
 	// 기부받은 우선순위 복원
 	thread_donate_recovery();
@@ -390,10 +404,20 @@ void thread_donate(struct thread *holder)
 	enum intr_level old_level;
 	old_level = intr_disable();
 
-	if (holder->priority < thread_get_priority())
+	// 기부 전파 (donate-nest)
+	struct thread *nest_thread = holder;
+	while (nest_thread != NULL && nest_thread->priority < thread_get_priority())
 	{
-		holder->priority = thread_get_priority();
+		nest_thread->priority = thread_get_priority();
+		nest_thread = nest_thread->lock_holder_thread;
 	}
+
+	// if (holder->priority < thread_get_priority())
+	// {
+	// 	holder->priority = thread_get_priority();
+	// }
+	// 현재 스레드에 필요한 락을 가지고 있는 스레드를 저장
+	thread_current()->lock_holder_thread = holder;
 
 	intr_set_level(old_level);
 }
@@ -417,31 +441,47 @@ void thread_donate_recovery(void)
 	}
 	else
 	{// 남아있는 lock이 있다면 lock들 중 가장 큰 우선순위 기부로 변경
-		int max_priority = cur_thread->init_priority;
-		struct list_elem *lock_e = list_front(lock_list);
+		thread_have_lock_waiters_donate(cur_thread, lock_list);
+	}
 
-		while(lock_e != list_end(lock_list))
+	intr_set_level(old_level);
+}
+
+/*
+* @brief 스레드의 소유 락 리스트에서 가장 높은 우선순위를 기부 받는 함수
+*
+* @param cur_thread 기부받는 현재 running 스레드
+* @param lock_list 스레드의 소유 락 리스트
+*/
+void thread_have_lock_waiters_donate(struct thread *cur_thread, struct list *lock_list)
+{
+	enum intr_level old_level;
+	old_level = intr_disable();
+
+	int max_priority = cur_thread->init_priority;
+	struct list_elem *lock_e = list_front(lock_list);
+
+	while(lock_e != list_end(lock_list))
+	{
+		struct lock *cur_lock = list_entry(lock_e, struct lock, lock_elem);
+		struct list *donator_list = &cur_lock->semaphore.waiters;
+		// 기다리는 도중 다른 스레드가 기부했을 수 있어 정렬을 해준다.
+		list_sort(donator_list, priority_compare, NULL);
+		struct thread *t;
+		if(!list_empty(donator_list)) 
 		{
-			struct lock *cur_lock = list_entry(lock_e, struct lock, lock_elem);
-			struct list *donator_list = &cur_lock->semaphore.waiters;
-			// 기다리는 도중 다른 스레드가 기부했을 수 있어 정렬을 해준다.
-			list_sort(donator_list, priority_compare, NULL);
-			struct thread *t;
-			if(!list_empty(donator_list)) 
-			{
-				t = list_entry(list_front(donator_list), struct thread, elem);
-				if (max_priority < t->priority) max_priority = t->priority;
-				lock_e = list_next(lock_e);
-				continue;
-			}
-
-			// if (max_priority < t->priority) max_priority = t->priority;
+			t = list_entry(list_front(donator_list), struct thread, elem);
+			if (max_priority < t->priority) max_priority = t->priority;
 			lock_e = list_next(lock_e);
+			continue;
 		}
 
-		// thread_set_priority를 안해주는 이유는 이 함수에서 init_priority도 변경하기 때문이다.
-		cur_thread->priority = max_priority;
+		// if (max_priority < t->priority) max_priority = t->priority;
+		lock_e = list_next(lock_e);
 	}
+
+	// thread_set_priority를 안해주는 이유는 이 함수에서 init_priority도 변경하기 때문이다.
+	cur_thread->priority = max_priority;
 
 	intr_set_level(old_level);
 }
