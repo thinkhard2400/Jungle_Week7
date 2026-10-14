@@ -66,10 +66,15 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
+		// ! 원본함수 -------------------------------------------------
+		// ! list_push_back (&sema->waiters, &thread_current ()->elem);
+
+		// 추가 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓======================================
 		list_insert_ordered (&sema->waiters,
 							&thread_current ()->elem,
 							priority_compare,
 							NULL);
+		// =======================================================
 		thread_block ();
 	}
 	sema->value--;
@@ -117,7 +122,9 @@ sema_up (struct semaphore *sema) {
 					struct thread, elem));
 	sema->value++;
 
+	// 스레드 선점 (by 종민) ↓↓↓↓↓↓↓↓↓↓↓↓↓↓==========================
 	thread_preemption();
+	// 추가 ====================================================
 	intr_set_level (old_level);
 }
 
@@ -261,11 +268,11 @@ lock_release (struct lock *lock) {
 
 	// 기부받은 우선순위 복원
 	thread_donate_recovery();
+	// ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑==============================================
 	
 	sema_up (&lock->semaphore);
-	// 선점
 
-	// 인터럽트 복원
+	// 인터럽트 복원 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓================================
 	intr_set_level(old_level);
 	// ============================================================
 }
@@ -326,6 +333,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
+	// ! list_push_back (&cond->waiters, &waiter.elem); 원본
 
 	// priority-condvar (by 종민) ===============================================
 	//list_push_back (&cond->waiters, &waiter.elem);	// 원본

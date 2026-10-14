@@ -118,6 +118,9 @@ timer_sleep (int64_t ticks) {
 	// ============================================================
 
 	ASSERT (intr_get_level () == INTR_ON);
+	// ! 원본 busy waiting 함수 --------------------------------------
+	// while (timer_elapsed (start) < ticks)
+	// ! thread_yield (); -------------------------------------------
 
 	// 현재 틱이 wake_up_tick보다 빠르다면 BLOCKED (by 종민) ==========
 	/* 대기 목록 등록과 스레드 차단 사이에 타이머 인터럽트가

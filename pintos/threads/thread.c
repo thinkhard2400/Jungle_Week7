@@ -255,9 +255,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
+
+	// 항상 ready_list에 맨 뒤에 삽입한다. (원본 함수) ------------------------------------
+	// list_push_back (&ready_list, &t->elem); ---------------------------------------
 	
 	// 현재 스레드를 READY 리스트에 우선순위 정렬 순서대로 삽입 (by 종민) =====================
-	// list_push_back (&ready_list, &t->elem); 원본
 	list_insert_ordered(&ready_list, &t->elem, priority_compare, NULL);
 	// =================================================================================
 
@@ -323,9 +325,12 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 
+	// 항상 ready_list에 맨 뒤에 삽입한다. (원본 함수) ------------------------------------
+	// if (curr != idle_thread)
+	// 		list_push_back (&ready_list, &curr->elem); --------------------------------
+
 	// 현재 스레드를 READY 리스트에 우선순위 정렬로 추가 (by 종민) ============================
 	if (curr != idle_thread) {
-		// list_push_back (&ready_list, &curr->elem); 원본에서는 ready_list의 맨 뒤에 push
 		list_insert_ordered(&ready_list, &curr->elem, priority_compare, NULL);
 	}
 	// =================================================================================
@@ -336,12 +341,16 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	// 추가 ========================================================================
     enum intr_level old_level = intr_disable ();
     struct thread *curr = thread_current ();
     bool should_yield = false;
+	// 추가↑↑↑↑↑↑↑↑↑================================================================
 
     /* 현재 스레드의 우선순위 변경. */
     curr->priority = new_priority;
+
+	// 추가↓↓↓↓↓↓↓↓↓================================================================
 	curr->init_priority = new_priority;
 
     /* 준비 큐가 비어 있지 않으면 가장 앞의 스레드와 비교. */
@@ -357,6 +366,7 @@ thread_set_priority (int new_priority) {
     /* 더 높은 우선순위의 스레드가 있으면 CPU 양보. */
     if (should_yield)
         thread_yield ();	
+	// 추가 ========================================================================
 }
 
 /* Returns the current thread's priority. */
@@ -639,7 +649,7 @@ allocate_tid (void) {
 	return tid;
 }
 
-// 우선순위 정렬 비교 함수 (by 종민) ==================================================
+// 우선순위 정렬 비교 함수 (by 종민)↓↓↓↓↓↓↓↓↓↓↓↓===========================================
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 	(void) aux;	// 아직 아무것도 안함. 비교할 때 참고할 추가정보
@@ -728,4 +738,4 @@ void thread_preemption(void)
 		thread_yield();
 	}
 }
-// =================================================================================
+// ↑↑↑↑↑============================================================================
